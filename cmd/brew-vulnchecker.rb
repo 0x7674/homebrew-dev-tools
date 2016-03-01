@@ -2,6 +2,7 @@
 require "formula"
 require "Nokogiri"
 require "ostruct"
+require "set"
 
 
 class Vulnchecker
@@ -15,11 +16,12 @@ class Vulnchecker
     else
       formulae = ARGV.formulae
       deps = []
+      deps = Set.new
       formulae.each do |formula|
-        deps.push(deps_for_formula(formula))
+        deps.merge deps_for_formula(formula)
       end
       
-      @vulns.merge!(vuln_checker deps.flatten.uniq)
+      @vulns.merge! vuln_checker(deps)
     end
 
     @vulns.merge!(vuln_checker formulae)
@@ -58,9 +60,7 @@ class Vulnchecker
 
     links = html.css("a")
     links.each do |link|
-      if link.text.match("CVE-")
-        vulns.push(link.text)
-      end
+        vulns << link.text if link.text.include?("CVE-")
     end
 
     vulns
@@ -90,10 +90,6 @@ class Vulnchecker
 
     deps = f.recursive_dependencies do |dependent, dep|
       Dependency.prune if ignores.any? { |ignore| dep.send(ignore) } && !dependent.build.with?(dep)
-    end
-    #puts "Deps: #{deps}"
-    reqs = f.recursive_requirements do |dependent, req|
-      Requirement.prune if ignores.any? { |ignore| req.send(ignore) } && !dependent.build.with?(req)
     end
 
     deps.each do |dep|
@@ -132,22 +128,19 @@ class Vulnchecker
     vuln_hash = {}
 
     formulae.each do |formula|
-      formula_name = formula.name # bfontaine wants full_name, this breaks brew-cask.
-                                  # No other formulae have name mismatches. WONTFIX?
       next unless formula.stable
       formula_version = formula.stable.version
 
-      puts "Checking #{formula_name}.."
+      ohai "Checking #{formula.full_name}.."
 
       begin 
-        vulns = get_cves(formula_name, formula_version)
+        vulns = get_cves(formula.name, formula_version)
               
         if vulns.any?
-          vuln_hash[formula_name] = []
-          vuln_hash[formula_name].push(vulns)
+          vuln_hash[formula.full_name] = vulns
         end
       rescue Exception=>e # get the right exception class
-        puts %{[!] An error occurred while lookup up vulns for #{formula_name}: #{e}}
+        puts "[!] An error occurred while lookup up vulns for #{formula.full_name}: #{e}"
       end
     end
 
