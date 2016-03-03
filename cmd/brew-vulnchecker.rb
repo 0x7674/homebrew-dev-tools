@@ -6,16 +6,16 @@ require "set"
 
 
 class Vulnchecker
+  CVE_URL = "https://www.cvedetails.com/version-search.php?product="
+
   def initialize
     formulae = []
-    @cve_url = "https://www.cvedetails.com/version-search.php?product="
     @vulns = {}
 
     if ARGV.empty?
       formulae = Formula
     else
       formulae = ARGV.formulae
-      deps = []
       deps = Set.new
       formulae.each do |formula|
         deps.merge deps_for_formula(formula)
@@ -30,7 +30,7 @@ class Vulnchecker
 
   def get_cves(formula_name, formula_version)
     vulns = []
-    html = Nokogiri::HTML(open("#{@cve_url}#{formula_name}&version=#{formula_version}"))
+    html = Nokogiri::HTML(open("#{CVE_URL}#{formula_name}&version=#{formula_version}"))
     
     title = html.css("title").text
     if title == "Vendor, Product and Version Search"
@@ -55,7 +55,7 @@ class Vulnchecker
       end
       #puts "[+] Selected vendor #{vendor} for package #{formula_name}"
 
-      html = Nokogiri::HTML(open("#{@cve_url}#{formula_name}&version=#{formula_version}&vendor=#{vendor}"))
+      html = Nokogiri::HTML(open("#{@CVE_URL}#{formula_name}&version=#{formula_version}&vendor=#{vendor}"))
     end
 
     links = html.css("a")
@@ -73,7 +73,7 @@ class Vulnchecker
         puts "#{f.full_name} is vulnerable to: #{@vulns[f.name].join(' ')}\n"
       end
 
-      output = recursive_deps_tree(f, "")
+      output = recursive_deps_tree(f)
       if output[/CVE-/]
         puts "#{f.full_name} has one or more vulnerable dependencies:"
         puts output
@@ -92,9 +92,7 @@ class Vulnchecker
       Dependency.prune if ignores.any? { |ignore| dep.send(ignore) } && !dependent.build.with?(dep)
     end
 
-    deps.each do |dep|
-      dep_names.push dep.to_formula
-    end
+    dep_names = deps.map { |dep| dep.to_formula }
     dep_names
   end
 
