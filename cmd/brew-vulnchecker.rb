@@ -1,9 +1,27 @@
-# encoding: UTF-8
+#!/usr/bin/env ruby
+
+#
+# Description: Check formulae for known vulnerabilities. Outputs
+#              json by default. 
+#   --deptree for a verbose view of packages and their vulnerable 
+#             dependencies
+#   
+#   --outfile to throw output into brew_vulnchecker_output.txt
+#
+# Author: 0x7674
+# Usage:
+#   brew vulnchecker [specific formulae] [--deptree] [--outfile]
+#
+
 require "formula"
 require "Nokogiri"
 require "ostruct"
 require "set"
 
+trap("SIGINT") { 
+    puts "\nExiting.."
+    exit! 
+}
 
 class Vulnchecker
   CVE_URL = "https://www.cvedetails.com/version-search.php?product="
@@ -11,21 +29,35 @@ class Vulnchecker
   def initialize
     formulae = []
     @vulns = {}
+    output_buffer = ''
 
     if ARGV.empty?
       formulae = Formula
     else
       formulae = ARGV.formulae
       deps = Set.new
-      formulae.each do |formula|
-        deps.merge deps_for_formula(formula)
-      end
+      if ARGV.include? "--deptree"
+        formulae.each do |formula|
+          deps.merge deps_for_formula(formula)
+        end
       
-      @vulns.merge! vuln_checker(deps)
+        @vulns.merge! vuln_checker(deps)
+      end
     end
 
     @vulns.merge!(vuln_checker formulae)
-    puts_deps_tree(formulae)
+
+    if ARGV.include? "--deptree"
+      output_buffer = puts_deps_tree(formulae)
+    else
+      output_buffer = @vulns
+    end
+
+    if ARGV.include? "--outfile"
+      File.open("brew_vulnchecker_output.txt", "w") {|f| f.write(output_buffer) }
+    else
+      puts output_buffer
+    end
   end
 
   def get_cves(formula_name, formula_version)
@@ -68,18 +100,22 @@ class Vulnchecker
   end
 
   def puts_deps_tree(formulae)
+    output_buffer = ''
+
     formulae.each do |f|
       unless @vulns[f.name].nil?
-        puts "#{f.full_name} is vulnerable to: #{@vulns[f.name].join(' ')}\n"
+        output_buffer << "#{f.full_name} is vulnerable to: #{@vulns[f.name].join(' ')}\n"
       end
 
       output = recursive_deps_tree(f)
       if output[/CVE-/]
-        puts "#{f.full_name} has one or more vulnerable dependencies:"
-        puts output
+        output_buffer << "#{f.full_name} has one or more vulnerable dependencies:"
+        output_buffer << output
       end
 
     end
+
+    return output_buffer
   end
 
   def deps_for_formula(f)
@@ -137,7 +173,7 @@ class Vulnchecker
         if vulns.any?
           vuln_hash[formula.full_name] = vulns
         end
-      rescue Exception=>e # get the right exception class
+      rescue Errno::EHOSTDOWN, Errno::ETIMEDOUT => e 
         puts "[!] An error occurred while lookup up vulns for #{formula.full_name}: #{e}"
       end
     end
