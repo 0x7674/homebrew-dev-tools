@@ -14,10 +14,17 @@
 #
 
 require "formula"
-require "Nokogiri"
 require "ostruct"
 require "set"
 require "cgi"
+
+begin
+  require "nokogiri"
+rescue LoadError
+  puts "Homebrew does not provide Ruby dependencies; install with:"
+  puts "  gem install nokogiri"
+  odie "Dependency nokogiri is not installed."
+end
 
 trap("SIGINT") do
   puts "\nExiting..."
