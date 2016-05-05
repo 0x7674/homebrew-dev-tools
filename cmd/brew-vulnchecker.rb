@@ -17,9 +17,10 @@ require "formula"
 require "Nokogiri"
 require "ostruct"
 require "set"
+require "cgi"
 
 trap("SIGINT") do
-  puts "\nExiting.."
+  puts "\nExiting..."
   exit!
 end
 
@@ -53,6 +54,10 @@ class Vulnchecker
       output_buffer = @vulns
     end
 
+    if output_buffer.empty?
+      output_buffer = "No vulnerabilities found."
+    end
+
     if ARGV.include? "--outfile"
       File.open("brew_vulnchecker_output.txt", "w") { |f| f.write(output_buffer) }
     else
@@ -67,7 +72,7 @@ class Vulnchecker
     title = html.css("title").text
     if title == "Vendor, Product and Version Search"
       # There were more than one entries for that product name / version.
-      # puts "[!] No exact match for #{pac_name}. Checking for other matches.."
+      # puts "[!] No exact match for #{pac_name}. Checking for other matches..."
       product_table = html.css("table.searchresults tr")[1..-1]
 
       vendor = ""
@@ -81,7 +86,7 @@ class Vulnchecker
 
           if product_vulns > max_vulns
             max_vulns = product_vulns
-            vendor = line.css("td")[1].text.strip
+            vendor = CGI.escape(line.css("td")[1].text.strip)
           end
         end
       end
@@ -160,7 +165,7 @@ class Vulnchecker
       next unless formula.stable
       formula_version = formula.stable.version
 
-      ohai "Checking #{formula.full_name}.."
+      ohai "Checking #{formula.full_name}..."
 
       begin
         vulns = get_cves(formula.name, formula_version)
